@@ -5,7 +5,6 @@
 #include "parser.h"
 
 #define MAX_TOKENS 256
-#define MAX_SYMBOLS 100
 
 int main() {
     char code[MAX_CODE_LEN];
@@ -66,14 +65,24 @@ int main() {
     }
 
     printf("\n=== Analisis Semantico ===\n");
-    Symbol symbol_table[MAX_SYMBOLS];
-    int symbol_count = 0;
-    analyze_semantic(ast, symbol_table, &symbol_count);
+    SymbolTable symbol_table;
+    analyze_semantic(ast, &symbol_table);
 
     printf("\nTabla de simbolos:\n");
-    for (int i = 0; i < symbol_count; i++) {
-        printf("Variable: %-10s Tipo: %s\n", symbol_table[i].name,
-               symbol_table[i].type == TYPE_INT ? "int" : "float");
+    for (int i = 0; i < symbol_table.scope_count; i++) {
+        printf("Ambito %d (%s):\n", i, i == 0 ? "global" : "local");
+        Scope *scope = &symbol_table.scopes[i];
+        if (scope->symbol_count == 0) {
+            printf("  (Ninguna variable declarada)\n");
+        } else {
+            for (int j = 0; j < scope->symbol_count; j++) {
+                printf("  Variable: %-10s Tipo: %s\n", scope->symbols[j].name,
+                       scope->symbols[j].type == TYPE_INT ? "int" : "float");
+            }
+        }
+    }
+    if (symbol_table.scope_count == 0) {
+        printf("(Ningun ambito creado)\n");
     }
     printf("Analisis semantico completado con exito.\n");
 

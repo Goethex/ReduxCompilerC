@@ -99,20 +99,17 @@ static Node *parse_if_statement(Token *tokens, int *token_index) {
     if (current_token(tokens, token_index).type != TOKEN_LPAREN) error("( esperado", current_token(tokens, token_index).line, current_token(tokens, token_index).column, "Sintactico");
     advance(token_index);
 
-    // Parsear la primera expresión
     Node *left_expr = parse_expr(tokens, token_index);
 
     if (current_token(tokens, token_index).type != TOKEN_EQ) error("== esperado", current_token(tokens, token_index).line, current_token(tokens, token_index).column, "Sintactico");
     Token eq_token = current_token(tokens, token_index);
     advance(token_index);
 
-    // Parsear la segunda expresión
     Node *right_expr = parse_expr(tokens, token_index);
 
     if (current_token(tokens, token_index).type != TOKEN_RPAREN) error(") esperado", current_token(tokens, token_index).line, current_token(tokens, token_index).column, "Sintactico");
     advance(token_index);
 
-    // Parsear el cuerpo del if como un bloque
     Node *body = parse_block(tokens, token_index);
 
     Node *node = new_node(NODE_IF, if_token);
@@ -122,7 +119,6 @@ static Node *parse_if_statement(Token *tokens, int *token_index) {
     node->left = condition;
     node->right = body;
 
-    // Verificar si hay una cláusula else
     if (current_token(tokens, token_index).type == TOKEN_ELSE) {
         advance(token_index);
         node->else_branch = parse_block(tokens, token_index);
@@ -139,7 +135,6 @@ static Node *parse_block(Token *tokens, int *token_index) {
     Node *block = new_node(NODE_BLOCK, token);
     Node *current = NULL;
 
-    // Parsear sentencias hasta encontrar }
     while (current_token(tokens, token_index).type != TOKEN_RBRACE) {
         Token curr_token = current_token(tokens, token_index);
         if (curr_token.type != TOKEN_INT && curr_token.type != TOKEN_FLOAT && curr_token.type != TOKEN_IF) {
@@ -189,82 +184,110 @@ Node *parse_syntactic(Token *tokens, int *token_index) {
     return root;
 }
 
-static void add_symbol(Symbol *symbol_table, int *symbol_count, char *name, VarType type, int line, int column) {
-    for (int i = 0; i < *symbol_count; i++) {
-        if (strcmp(symbol_table[i].name, name) == 0) {
+static void enter_scope(SymbolTable *symbol_table) {
+    if (symbol_table->scope_count >= MAX_SCOPES) {
+        printf("Error: Demasiados ambitos anidados\n");
+        exit(1);
+    }
+    symbol_table->scopes[symbol_table->scope_count].symbol_count = 0;
+    symbol_table->scope_count++;
+}
+
+static void exit_scope(SymbolTable *symbol_table) {
+    if (symbol_table->scope_count > 0) {
+        symbol_table->scope_count--;
+    }
+}
+
+static void add_symbol(SymbolTable *symbol_table, char *name, VarType type, int line, int column) {
+    if (symbol_table->scope_count == 0) {
+        enter_scope(symbol_table);
+    }
+    Scope *current_scope = &symbol_table->scopes[symbol_table->scope_count - 1];
+    
+    for (int i = 0; i < current_scope->symbol_count; i++) {
+        if (strcmp(current_scope->symbols[i].name, name) == 0) {
             error("Variable ya declarada", line, column, "Semantico");
         }
     }
-    strcpy(symbol_table[*symbol_count].name, name);
-    symbol_table[*symbol_count].type = type;
-    (*symbol_count)++;
+    strcpy(current_scope->symbols[current_scope->symbol_count].name, name);
+    current_scope->symbols[current_scope->symbol_count].type = type;
+    current_scope->symbol_count++;
 }
 
-static VarType lookup_symbol(Symbol *symbol_table, int symbol_count, char *name, int line, int column) {
-    for (int i = 0; i < symbol_count; i++) {
-        if (strcmp(symbol_table[i].name, name) == 0) {
-            return symbol_table[i].type;
+static VarType lookup_symbol(SymbolTable *symbol_table, char *name, int line, int column) {
+    for (int i = symbol_table->scope_count - 1; i >= 0; i--) {
+        Scope *scope = &symbol_table->scopes[i];
+        for (int j = 0; j < scope->symbol_count; j++) {
+            if (strcmp(scope->symbols[j].name, name) == 0) {
+                return scope->symbols[j].type;
+            }
         }
     }
     error("Variable no declarada", line, column, "Semantico");
     return TYPE_INT; // No alcanzado
 }
 
-static void analyze_expr(Node *expr, Symbol *symbol_table, int *symbol_count) {
+static void analyze_expr(Node *expr, SymbolTable *symbol_table) {
     if (!expr) return;
 
     if (expr->node_type == NODE_TERM && expr->token.type == TOKEN_ID) {
-        lookup_symbol(symbol_table, *symbol_count, expr->token.lexeme, expr->token.line, expr->token.column);
+        lookup_symbol(symbol_table, expr->token.lexeme, expr->token.line, expr->token.column);
     } else if (expr->node_type == NODE_EXPR) {
-        if (expr->left) analyze_expr(expr->left, symbol_table, symbol_count);
-        if (expr->right) analyze_expr(expr->right, symbol_table, symbol_count);
+        if (expr->left) analyze_expr(expr->left, symbol_table);
+        if (expr->right) analyze_expr(expr->right, symbol_table);
     }
 }
 
-static void analyze_node(Node *node, Symbol *symbol_table, int *symbol_count) {
+static void analyze_node(Node *node, SymbolTable *symbol_table) {
     if (!node) return;
     
     if (node->node_type == NODE_DECL) {
-        analyze_expr(node->left, symbol_table, symbol_count);
-        add_symbol(symbol_table, symbol_count, node->token.lexeme, node->var_type, node->token.line, node->token.column);
+        analyze_expr(node->left, symbol_table);
+        add_symbol(symbol_table, node->token.lexeme, node->var_type, node->token.line, node->token.column);
     } else if (node->node_type == NODE_IF) {
-        // Analizar ambas expresiones en la condición
         if (node->left && node->left->node_type == NODE_EXPR) {
-            analyze_expr(node->left->left, symbol_table, symbol_count);
-            analyze_expr(node->left->right, symbol_table, symbol_count);
+            analyze_expr(node->left->left, symbol_table);
+            analyze_expr(node->left->right, symbol_table);
         }
-        // Analizar el cuerpo del if
         if (node->right && node->right->node_type == NODE_BLOCK) {
+            enter_scope(symbol_table);
             Node *stmt = node->right->right;
             while (stmt) {
-                analyze_node(stmt, symbol_table, symbol_count);
+                analyze_node(stmt, symbol_table);
                 stmt = stmt->next;
             }
+            // No llamamos a exit_scope para preservar el ámbito
         }
-        // Analizar el cuerpo del else
         if (node->else_branch && node->else_branch->node_type == NODE_BLOCK) {
+            enter_scope(symbol_table);
             Node *stmt = node->else_branch->right;
             while (stmt) {
-                analyze_node(stmt, symbol_table, symbol_count);
+                analyze_node(stmt, symbol_table);
                 stmt = stmt->next;
             }
+            // No llamamos a exit_scope para preservar el ámbito
         }
     } else if (node->node_type == NODE_BLOCK) {
-        // Analizar todas las sentencias del bloque
+        enter_scope(symbol_table);
         Node *stmt = node->right;
         while (stmt) {
-            analyze_node(stmt, symbol_table, symbol_count);
+            analyze_node(stmt, symbol_table);
             stmt = stmt->next;
         }
+        // No llamamos a exit_scope para preservar el ámbito
     }
 }
 
-void analyze_semantic(Node *ast, Symbol *symbol_table, int *symbol_count) {
+void analyze_semantic(Node *ast, SymbolTable *symbol_table) {
+    symbol_table->scope_count = 0;
+    enter_scope(symbol_table); // Ámbito global
     Node *current = ast;
     while (current) {
-        analyze_node(current, symbol_table, symbol_count);
+        analyze_node(current, symbol_table);
         current = current->next;
     }
+    // No llamamos a exit_scope para preservar el ámbito global
 }
 
 void free_ast(Node *node) {
