@@ -3,7 +3,7 @@
 
 #include "token.h"
 
-void set_input(char *input);
+void set_input(const char *input);
 Token get_next_token(void);
 
 #endif

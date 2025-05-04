@@ -1,93 +1,149 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-#include "lexer.h"
+#include "token.h"
 
-static char *code;
+static char *input;
 static int pos = 0;
 static int line = 1;
 static int column = 1;
 
-void set_input(char *input) {
-    code = input;
+void set_input(const char *code) {
+    input = (char *)code;
     pos = 0;
     line = 1;
     column = 1;
 }
 
-Token get_next_token() {
-    Token token = {TOKEN_ERROR, "", 0.0, line, column};
-    while (code[pos] != '\0') {
-        if (isspace(code[pos])) {
-            if (code[pos] == '\n') {
-                line++;
-                column = 1;
-            } else {
-                column++;
-            }
-            pos++;
-            continue;
-        }
-        token.line = line;
-        token.column = column;
+static char peek(void) {
+    return input[pos];
+}
 
-        if (isalpha(code[pos])) {
-            int i = 0;
-            while (isalnum(code[pos]) && i < MAX_ID_LEN - 1) {
-                token.lexeme[i++] = code[pos++];
-                column++;
-            }
-            token.lexeme[i] = '\0';
-            if (strcmp(token.lexeme, "int") == 0) token.type = TOKEN_INT;
-            else if (strcmp(token.lexeme, "float") == 0) token.type = TOKEN_FLOAT;
-            else if (strcmp(token.lexeme, "if") == 0) token.type = TOKEN_IF;
-            else if (strcmp(token.lexeme, "else") == 0) token.type = TOKEN_ELSE;
-            else token.type = TOKEN_ID;
-            return token;
+static char advance(void) {
+    char c = input[pos++];
+    if (c == '\n') {
+        line++;
+        column = 1;
+    } else {
+        column++;
+    }
+    return c;
+}
+
+static void skip_whitespace(void) {
+    while (isspace(peek())) {
+        advance();
+    }
+}
+
+static int is_id_start(char c) {
+    return isalpha(c) || c == '_' || c == '@';
+}
+
+static int is_id_char(char c) {
+    return isalnum(c) || c == '_' || c == '@';
+}
+
+Token get_next_token(void) {
+    skip_whitespace();
+
+    Token token;
+    token.lexeme[0] = '\0';
+    token.line = line;
+    token.column = column;
+
+    if (peek() == '\0') {
+        token.type = TOKEN_EOF;
+        return token;
+    }
+
+    char c = peek();
+
+    // Palabras reservadas y tipos
+    if (is_id_start(c)) {
+        int i = 0;
+        while (is_id_char(peek()) && i < MAX_ID_LEN - 1) {
+            token.lexeme[i++] = advance();
         }
-        if (isdigit(code[pos]) || code[pos] == '.') {
-            int i = 0;
-            while ((isdigit(code[pos]) || code[pos] == '.') && i < MAX_ID_LEN - 1) {
-                token.lexeme[i++] = code[pos++];
-                column++;
-            }
-            token.lexeme[i] = '\0';
-            token.type = TOKEN_NUMBER;
-            sscanf(token.lexeme, "%f", &token.value);
-            return token;
-        }
-        switch (code[pos]) {
-            case '+': token.type = TOKEN_PLUS; token.lexeme[0] = '+'; token.lexeme[1] = '\0'; pos++; column++; break;
-            case '-': token.type = TOKEN_MINUS; token.lexeme[0] = '-'; token.lexeme[1] = '\0'; pos++; column++; break;
-            case '=':
-                if (code[pos + 1] == '=') {
-                    token.type = TOKEN_EQ;
-                    strcpy(token.lexeme, "==");
-                    pos += 2;
-                    column += 2;
-                } else {
-                    token.type = TOKEN_EQUAL;
-                    token.lexeme[0] = '=';
-                    token.lexeme[1] = '\0';
-                    pos++;
-                    column++;
-                }
-                break;
-            case ';': token.type = TOKEN_SEMICOLON; token.lexeme[0] = ';'; token.lexeme[1] = '\0'; pos++; column++; break;
-            case '(': token.type = TOKEN_LPAREN; token.lexeme[0] = '('; token.lexeme[1] = '\0'; pos++; column++; break;
-            case ')': token.type = TOKEN_RPAREN; token.lexeme[0] = ')'; token.lexeme[1] = '\0'; pos++; column++; break;
-            case '{': token.type = TOKEN_LBRACE; token.lexeme[0] = '{'; token.lexeme[1] = '\0'; pos++; column++; break;
-            case '}': token.type = TOKEN_RBRACE; token.lexeme[0] = '}'; token.lexeme[1] = '\0'; pos++; column++; break;
-            default:
-                token.lexeme[0] = code[pos++];
-                token.lexeme[1] = '\0';
-                column++;
-                return token; // TOKEN_ERROR
+        token.lexeme[i] = '\0';
+
+        if (strcmp(token.lexeme, "int") == 0) {
+            token.type = TOKEN_INT;
+        } else if (strcmp(token.lexeme, "float") == 0) {
+            token.type = TOKEN_FLOAT;
+        } else if (strcmp(token.lexeme, "if") == 0) {
+            token.type = TOKEN_IF;
+        } else if (strcmp(token.lexeme, "else") == 0) {
+            token.type = TOKEN_ELSE;
+        } else {
+            token.type = TOKEN_ID;
         }
         return token;
     }
-    token.type = TOKEN_EOF;
-    token.line = line;
-    token.column = column;
-    return token;
+
+    // Números
+    if (isdigit(c)) {
+        int i = 0;
+        while (isdigit(peek()) && i < MAX_ID_LEN - 1) {
+            token.lexeme[i++] = advance();
+        }
+        token.lexeme[i] = '\0';
+        token.type = TOKEN_NUMBER;
+        return token;
+    }
+
+    // Operadores y símbolos
+    switch (c) {
+        case '+':
+            token.lexeme[0] = advance();
+            token.lexeme[1] = '\0';
+            token.type = TOKEN_PLUS;
+            return token;
+        case '-':
+            token.lexeme[0] = advance();
+            token.lexeme[1] = '\0';
+            token.type = TOKEN_MINUS;
+            return token;
+        case '=':
+            token.lexeme[0] = advance();
+            if (peek() == '=') {
+                token.lexeme[1] = advance();
+                token.lexeme[2] = '\0';
+                token.type = TOKEN_EQ;
+            } else {
+                token.lexeme[1] = '\0';
+                token.type = TOKEN_EQUAL;
+            }
+            return token;
+        case ';':
+            token.lexeme[0] = advance();
+            token.lexeme[1] = '\0';
+            token.type = TOKEN_SEMICOLON;
+            return token;
+        case '(':
+            token.lexeme[0] = advance();
+            token.lexeme[1] = '\0';
+            token.type = TOKEN_LPAREN;
+            return token;
+        case ')':
+            token.lexeme[0] = advance();
+            token.lexeme[1] = '\0';
+            token.type = TOKEN_RPAREN;
+            return token;
+        case '{':
+            token.lexeme[0] = advance();
+            token.lexeme[1] = '\0';
+            token.type = TOKEN_LBRACE;
+            return token;
+        case '}':
+            token.lexeme[0] = advance();
+            token.lexeme[1] = '\0';
+            token.type = TOKEN_RBRACE;
+            return token;
+        default:
+            token.lexeme[0] = advance();
+            token.lexeme[1] = '\0';
+            token.type = TOKEN_ERROR;
+            return token;
+    }
 }
