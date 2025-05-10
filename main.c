@@ -44,6 +44,10 @@ int main() {
                token.type == TOKEN_ELSE ? "ELSE" :
                token.type == TOKEN_LBRACE ? "LBRACE" :
                token.type == TOKEN_RBRACE ? "RBRACE" :
+               token.type == TOKEN_GT ? "GT" :
+               token.type == TOKEN_LT ? "LT" :
+               token.type == TOKEN_GE ? "GE" :
+               token.type == TOKEN_LE ? "LE" :
                token.type == TOKEN_EOF ? "EOF" : "ERROR",
                token.lexeme, token.line);
         if (token.type == TOKEN_EOF || token.type == TOKEN_ERROR || token_count >= MAX_TOKENS) break;
@@ -69,21 +73,20 @@ int main() {
     analyze_semantic(ast, &symbol_table);
 
     printf("\nTabla de simbolos:\n");
+    printf("+-----------------+--------+----------------+-------+\n");
+    printf("| Nombre          | Tipo   | Ambito         | Linea |\n");
+    printf("+-----------------+--------+----------------+-------+\n");
     for (int i = 0; i < symbol_table.scope_count; i++) {
-        printf("Ambito %d (%s):\n", i, i == 0 ? "global" : "local");
         Scope *scope = &symbol_table.scopes[i];
-        if (scope->symbol_count == 0) {
-            printf("  (Ninguna variable declarada)\n");
-        } else {
-            for (int j = 0; j < scope->symbol_count; j++) {
-                printf("  Variable: %-10s Tipo: %s\n", scope->symbols[j].name,
-                       scope->symbols[j].type == TYPE_INT ? "int" : "float");
-            }
+        for (int j = 0; j < scope->symbol_count; j++) {
+            printf("| %-15s | %-6s | %-14s | %-5d |\n",
+                   scope->symbols[j].name,
+                   scope->symbols[j].type == TYPE_INT ? "int" : "float",
+                   i == 0 ? "global" : "local",
+                   scope->symbols[j].line);
         }
     }
-    if (symbol_table.scope_count == 0) {
-        printf("(Ningun ambito creado)\n");
-    }
+    printf("+-----------------+--------+----------------+-------+\n");
     printf("Analisis semantico completado con exito.\n");
 
     free_ast(ast);

@@ -3,7 +3,6 @@
 #include <string.h>
 #include "parser.h"
 
-// Prototipos de funciones
 static Node *parse_statement(Token *tokens, int *token_index);
 static Node *parse_block(Token *tokens, int *token_index);
 
@@ -24,14 +23,14 @@ static VarType get_type(Token token) {
     if (token.type == TOKEN_INT) return TYPE_INT;
     if (token.type == TOKEN_FLOAT) return TYPE_FLOAT;
     error("Tipo esperado", token.line, token.column, "Sintactico");
-    return TYPE_INT; // No alcanzado
+    return TYPE_INT;
 }
 
 static Node *new_node(NodeType node_type, Token token) {
     Node *node = (Node *)malloc(sizeof(Node));
     node->node_type = node_type;
     node->token = token;
-    node->var_type = TYPE_INT; // Valor por defecto
+    node->var_type = TYPE_INT;
     node->left = node->right = node->else_branch = node->next = NULL;
     return node;
 }
@@ -101,8 +100,12 @@ static Node *parse_if_statement(Token *tokens, int *token_index) {
 
     Node *left_expr = parse_expr(tokens, token_index);
 
-    if (current_token(tokens, token_index).type != TOKEN_EQ) error("== esperado", current_token(tokens, token_index).line, current_token(tokens, token_index).column, "Sintactico");
-    Token eq_token = current_token(tokens, token_index);
+    TokenType current_type = current_token(tokens, token_index).type;
+    if (current_type != TOKEN_EQ && current_type != TOKEN_GT && current_type != TOKEN_LT &&
+        current_type != TOKEN_GE && current_type != TOKEN_LE) {
+        error("Operador de comparacion (==, >, <, >=, <=) esperado", current_token(tokens, token_index).line, current_token(tokens, token_index).column, "Sintactico");
+    }
+    Token op_token = current_token(tokens, token_index);
     advance(token_index);
 
     Node *right_expr = parse_expr(tokens, token_index);
@@ -113,7 +116,7 @@ static Node *parse_if_statement(Token *tokens, int *token_index) {
     Node *body = parse_block(tokens, token_index);
 
     Node *node = new_node(NODE_IF, if_token);
-    Node *condition = new_node(NODE_EXPR, eq_token);
+    Node *condition = new_node(NODE_EXPR, op_token);
     condition->left = left_expr;
     condition->right = right_expr;
     node->left = condition;
@@ -193,12 +196,6 @@ static void enter_scope(SymbolTable *symbol_table) {
     symbol_table->scope_count++;
 }
 
-static void exit_scope(SymbolTable *symbol_table) {
-    if (symbol_table->scope_count > 0) {
-        symbol_table->scope_count--;
-    }
-}
-
 static void add_symbol(SymbolTable *symbol_table, char *name, VarType type, int line, int column) {
     if (symbol_table->scope_count == 0) {
         enter_scope(symbol_table);
@@ -212,6 +209,7 @@ static void add_symbol(SymbolTable *symbol_table, char *name, VarType type, int 
     }
     strcpy(current_scope->symbols[current_scope->symbol_count].name, name);
     current_scope->symbols[current_scope->symbol_count].type = type;
+    current_scope->symbols[current_scope->symbol_count].line = line; // Guardar línea
     current_scope->symbol_count++;
 }
 
@@ -225,7 +223,7 @@ static VarType lookup_symbol(SymbolTable *symbol_table, char *name, int line, in
         }
     }
     error("Variable no declarada", line, column, "Semantico");
-    return TYPE_INT; // No alcanzado
+    return TYPE_INT;
 }
 
 static void analyze_expr(Node *expr, SymbolTable *symbol_table) {
@@ -257,7 +255,6 @@ static void analyze_node(Node *node, SymbolTable *symbol_table) {
                 analyze_node(stmt, symbol_table);
                 stmt = stmt->next;
             }
-            // No llamamos a exit_scope para preservar el ámbito
         }
         if (node->else_branch && node->else_branch->node_type == NODE_BLOCK) {
             enter_scope(symbol_table);
@@ -266,7 +263,6 @@ static void analyze_node(Node *node, SymbolTable *symbol_table) {
                 analyze_node(stmt, symbol_table);
                 stmt = stmt->next;
             }
-            // No llamamos a exit_scope para preservar el ámbito
         }
     } else if (node->node_type == NODE_BLOCK) {
         enter_scope(symbol_table);
@@ -275,19 +271,17 @@ static void analyze_node(Node *node, SymbolTable *symbol_table) {
             analyze_node(stmt, symbol_table);
             stmt = stmt->next;
         }
-        // No llamamos a exit_scope para preservar el ámbito
     }
 }
 
 void analyze_semantic(Node *ast, SymbolTable *symbol_table) {
     symbol_table->scope_count = 0;
-    enter_scope(symbol_table); // Ámbito global
+    enter_scope(symbol_table);
     Node *current = ast;
     while (current) {
         analyze_node(current, symbol_table);
         current = current->next;
     }
-    // No llamamos a exit_scope para preservar el ámbito global
 }
 
 void free_ast(Node *node) {

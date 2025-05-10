@@ -20,6 +20,10 @@ typedef enum {
     TOKEN_ELSE,
     TOKEN_LBRACE,
     TOKEN_RBRACE,
+    TOKEN_GT,    // Mayor que (>)
+    TOKEN_LT,    // Menor que (<)
+    TOKEN_GE,    // Mayor o igual (>=)
+    TOKEN_LE,    // Menor o igual (<=)
     TOKEN_EOF,
     TOKEN_ERROR
 } TokenType;
